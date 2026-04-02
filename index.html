@@ -349,6 +349,105 @@
             cursor: pointer;
         }
 
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            width: 85%;
+            max-width: 320px;
+            border-radius: 28px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .modal-content p {
+            font-size: 14px;
+            color: #5b6e8c;
+            margin-bottom: 20px;
+        }
+
+        .qty-modal-control {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .qty-modal-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 44px;
+            background: #eef2ff;
+            border: none;
+            font-size: 24px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .qty-modal-value {
+            font-size: 28px;
+            font-weight: 700;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .qty-modal-value input {
+            width: 80px;
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        .modal-confirm {
+            background: #2563eb;
+            color: white;
+        }
+
+        .modal-cancel {
+            background: #f1f4f9;
+            color: #1e293b;
+        }
+
         .camera-container {
             position: fixed;
             top: 0;
@@ -440,6 +539,25 @@
         <button class="btn-finish" onclick="finishOrder()">Finalizar Pedido</button>
     </div>
 
+    <!-- Modal de quantidade (para produtos com mais de 1 unidade) -->
+    <div id="qty-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="modal-product-name"></h3>
+            <p id="modal-product-info"></p>
+            <div class="qty-modal-control">
+                <button class="qty-modal-btn" onclick="changeModalQty(-1)">−</button>
+                <div class="qty-modal-value">
+                    <input type="number" id="modal-qty-input" value="1" min="1" step="1">
+                </div>
+                <button class="qty-modal-btn" onclick="changeModalQty(1)">+</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="closeQtyModal()">Cancelar</button>
+                <button class="modal-confirm" onclick="confirmModalQuantity()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal da câmera -->
     <div id="camera-container" class="camera-container">
         <div id="reader" style="width: 100%; max-width: 500px;"></div>
@@ -509,6 +627,7 @@
 
         let orderStatus = {};
         let currentOrderId = null;
+        let pendingItem = null; // produto aguardando confirmação de quantidade
 
         for (let id in orders) orderStatus[id] = "pending";
 
@@ -518,6 +637,11 @@
         const pickingSub = document.getElementById('picking-sub');
         const productStatusList = document.getElementById('product-status-list');
         const manualCodeInput = document.getElementById('manual-code');
+
+        const qtyModal = document.getElementById('qty-modal');
+        const modalProductName = document.getElementById('modal-product-name');
+        const modalProductInfo = document.getElementById('modal-product-info');
+        const modalQtyInput = document.getElementById('modal-qty-input');
 
         function showToast(message, isError = false) {
             let toast = document.querySelector('.toast');
@@ -541,6 +665,7 @@
 
         function goHome() {
             if (cameraActive) stopCamera();
+            closeQtyModal();
             renderHome();
             show('view-home');
         }
@@ -618,16 +743,11 @@
 
         // Função chamada ao clicar no ícone de escaneamento de um produto específico
         function scanSpecificProduct(ean) {
-            // Abre a câmera e, ao ler, verifica se o código corresponde ao EAN do produto
-            startCameraWithTarget(ean);
+            cameraTargetEan = ean;
+            startCamera();
         }
 
         let cameraTargetEan = null;
-
-        function startCameraWithTarget(targetEan) {
-            cameraTargetEan = targetEan;
-            startCamera();
-        }
 
         // Processa o código escaneado (vindo da câmera ou do campo manual)
         function processCode(code) {
@@ -639,7 +759,6 @@
             const order = orders[currentOrderId];
             let item = null;
 
-            // Se veio de um escaneamento específico (botão do produto)
             if (cameraTargetEan) {
                 if (code === cameraTargetEan) {
                     item = order.items.find(i => i.ean === cameraTargetEan);
@@ -650,7 +769,6 @@
                 }
                 cameraTargetEan = null;
             } else {
-                // Escaneamento livre: busca por EAN ou SKU
                 item = findProductByCode(order.items, code);
             }
 
@@ -659,15 +777,26 @@
                 return;
             }
 
-            if (item.qtdSeparada >= item.qtdSolicitada) {
+            const remaining = item.qtdSolicitada - item.qtdSeparada;
+            if (remaining <= 0) {
                 showToast(`Produto ${item.nome} já está totalmente separado.`, true);
                 return;
             }
 
-            // Adiciona 1 unidade
-            item.qtdSeparada++;
-            renderPickingScreen();
-            showToast(`✓ ${item.nome} - ${item.qtdSeparada}/${item.qtdSolicitada}`, false);
+            // Se a quantidade solicitada for 1, adiciona diretamente
+            if (item.qtdSolicitada === 1) {
+                item.qtdSeparada++;
+                renderPickingScreen();
+                showToast(`✓ ${item.nome} - ${item.qtdSeparada}/${item.qtdSolicitada}`, false);
+            } else {
+                // Abre modal para quantidade
+                pendingItem = item;
+                modalProductName.textContent = item.nome;
+                modalProductInfo.textContent = `Restante: ${remaining} de ${item.qtdSolicitada} unidades`;
+                modalQtyInput.value = 1;
+                modalQtyInput.max = remaining;
+                qtyModal.classList.add('active');
+            }
         }
 
         function handleManualCode() {
@@ -675,6 +804,36 @@
             if (!code) return;
             manualCodeInput.value = '';
             processCode(code);
+        }
+
+        function changeModalQty(delta) {
+            let currentVal = parseInt(modalQtyInput.value) || 1;
+            let newVal = currentVal + delta;
+            if (newVal < 1) newVal = 1;
+            if (pendingItem && newVal > (pendingItem.qtdSolicitada - pendingItem.qtdSeparada)) {
+                newVal = pendingItem.qtdSolicitada - pendingItem.qtdSeparada;
+            }
+            modalQtyInput.value = newVal;
+        }
+
+        function confirmModalQuantity() {
+            if (!pendingItem) return;
+            let qty = parseInt(modalQtyInput.value) || 0;
+            const remaining = pendingItem.qtdSolicitada - pendingItem.qtdSeparada;
+            if (qty <= 0 || qty > remaining) {
+                showToast(`Quantidade inválida. Restam ${remaining} unidades.`, true);
+                return;
+            }
+            pendingItem.qtdSeparada += qty;
+            closeQtyModal();
+            renderPickingScreen();
+            showToast(`✓ ${pendingItem.nome} - +${qty} unidade(s)`, false);
+            pendingItem = null;
+        }
+
+        function closeQtyModal() {
+            qtyModal.classList.remove('active');
+            pendingItem = null;
         }
 
         function finishOrder() {
