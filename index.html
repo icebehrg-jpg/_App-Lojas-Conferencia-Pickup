@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Separação de Pedidos - Pickup</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f7fb;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+
+        .view {
+            display: none;
+            min-height: 100vh;
+            flex-direction: column;
+        }
+
+        .view.active {
+            display: flex;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 16px 12px;
+            border-bottom: 1px solid #e9eef3;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #5b6e8c;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: #2563eb;
+            padding: 8px 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            margin-bottom: 12px;
+        }
+
+        .back-btn:active {
+            opacity: 0.7;
+        }
+
+        .search-box {
+            background: white;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e9eef3;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #f1f4f9;
+            border: none;
+            border-radius: 30px;
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .search-input:focus {
+            background: #fff;
+            box-shadow: 0 0 0 2px #2563eb20;
+        }
+
+        .order-list {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .order-card {
+            background: white;
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #eef2f8;
+            transition: all 0.2s;
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 12px;
+        }
+
+        .order-id {
+            font-weight: 700;
+            font-size: 18px;
+            color: #0f172a;
+        }
+
+        .badge-pickup {
+            background: #eef2ff;
+            color: #2563eb;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .customer-info {
+            margin-bottom: 12px;
+        }
+
+        .customer-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .customer-doc {
+            font-size: 13px;
+            color: #5b6e8c;
+            margin-top: 2px;
+        }
+
+        .order-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f2f6;
+        }
+
+        .datetime {
+            font-size: 13px;
+            color: #5b6e8c;
+        }
+
+        .btn-start {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+
+        .btn-start:active {
+            transform: scale(0.96);
+            background: #1d4ed8;
+        }
+
+        .btn-start.disabled {
+            background: #cbd5e1;
+            pointer-events: none;
+        }
+
+        .picking-header {
+            background: white;
+            padding: 16px;
+            border-bottom: 1px solid #e9eef3;
+        }
+
+        .picking-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .picking-sub {
+            font-size: 13px;
+            color: #5b6e8c;
+            margin-top: 4px;
+        }
+
+        /* Área de escaneamento manual */
+        .scan-area {
+            background: white;
+            margin: 16px;
+            padding: 20px 16px;
+            border-radius: 24px;
+            border: 1px solid #eef2f8;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .manual-entry {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .manual-input {
+            flex: 1;
+            height: 48px;
+            border: 1px solid #cbd5e1;
+            border-radius: 40px;
+            padding: 0 16px;
+            font-size: 16px;
+            font-family: inherit;
+            background: #f8fafc;
+        }
+
+        .manual-input:focus {
+            outline: none;
+            border-color: #2563eb;
+            background: white;
+        }
+
+        .manual-btn {
+            background: #eef2ff;
+            border: none;
+            padding: 0 20px;
+            height: 48px;
+            border-radius: 40px;
+            font-weight: 600;
+            color: #2563eb;
+            cursor: pointer;
+        }
+
+        .manual-btn:active {
+            background: #e0e7ff;
+        }
+
+        .product-list {
+            padding: 0 16px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .product-status-card {
+            background: white;
+            border-radius: 16px;
+            padding: 12px;
+            border: 1px solid #eef2f8;
+            display: flex;
+            gap: 12px;
+            position: relative;
+        }
+
+        .product-image {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: #f1f4f9;
+        }
+
+        .product-details {
+            flex: 1;
+        }
+
+        .product-name-status {
+            font-weight: 600;
+            font-size: 14px;
+            padding-right: 40px;
+        }
+
+        .product-codes-status {
+            font-size: 12px;
+            color: #5b6e8c;
+            margin: 4px 0;
+        }
+
+        .product-qty-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .qty-requested-status {
+            font-size: 13px;
+        }
+
+        .qty-separated-status {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .complete-badge {
+            background: #10b98120;
+            color: #059669;
+            padding: 2px 8px;
+            border-radius: 30px;
+            font-size: 12px;
+        }
+
+        .scan-item-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #eef2ff;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 36px;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #2563eb;
+            transition: 0.1s;
+        }
+
+        .scan-item-btn:active {
+            transform: scale(0.92);
+            background: #e0e7ff;
+        }
+
+        .btn-finish {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 16px;
+            margin: 16px;
+            cursor: pointer;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            width: 85%;
+            max-width: 320px;
+            border-radius: 28px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .modal-content p {
+            font-size: 14px;
+            color: #5b6e8c;
+            margin-bottom: 20px;
+        }
+
+        .qty-modal-control {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .qty-modal-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 44px;
+            background: #eef2ff;
+            border: none;
+            font-size: 24px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .qty-modal-value {
+            font-size: 28px;
+            font-weight: 700;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        .modal-confirm {
+            background: #2563eb;
+            color: white;
+        }
+
+        .modal-cancel {
+            background: #f1f4f9;
+            color: #1e293b;
+        }
+
+        .camera-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 1001;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .camera-container.active {
+            display: flex;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            background: black;
+        }
+
+        .close-camera {
+            background: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Tela inicial: lista de pedidos -->
+    <div class="view active" id="view-home">
+        <div class="header">
+            <h1>Aguardando Separação</h1>
+            <p>Pickup In Store</p>
+        </div>
+        <div class="search-box">
+            <input type="text" id="search-input" class="search-input" placeholder="Filtrar por Pedido, CPF, CNPJ...">
+        </div>
+        <div class="order-list" id="order-list-container"></div>
+    </div>
+
+    <!-- Tela de separação do pedido -->
+    <div class="view" id="view-picking">
+        <div class="picking-header">
+            <button class="back-btn" onclick="goHome()">← Voltar</button>
+            <div class="picking-title" id="picking-title">Iniciar Separação - #</div>
+            <div class="picking-sub" id="picking-sub"></div>
+        </div>
+
+        <div class="scan-area">
+            <div class="manual-entry">
+                <input type="text" id="manual-code" class="manual-input" placeholder="Digite o código do produto"
+                    inputmode="numeric">
+                <button class="manual-btn" onclick="handleManualCode()">Buscar</button>
+            </div>
+        </div>
+
+        <div class="section-label" style="padding:0 16px 8px; font-size:12px; color:#5b6e8c;">PRODUTOS DO PEDIDO</div>
+        <div class="product-list" id="product-status-list"></div>
+
+        <button class="btn-finish" onclick="finishOrder()">Finalizar Pedido</button>
+    </div>
+
+    <!-- Modal de quantidade -->
+    <div id="qty-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="modal-product-name"></h3>
+            <p id="modal-product-ean"></p>
+            <div class="qty-modal-control">
+                <button class="qty-modal-btn" onclick="changeModalQty(-1)">−</button>
+                <span id="modal-qty-value" class="qty-modal-value">1</span>
+                <button class="qty-modal-btn" onclick="changeModalQty(1)">+</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="closeModal()">Cancelar</button>
+                <button class="modal-confirm" onclick="confirmQuantity()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal da câmera -->
+    <div id="camera-container" class="camera-container">
+        <div id="reader" style="width: 100%; max-width: 500px;"></div>
+        <button class="close-camera" onclick="stopCamera()">Fechar câmera</button>
+    </div>
+
+    <script>
+        // ---------- DADOS MOCK COM OS PEDIDOS HIPOTÉTICOS ----------
+        let orders = {
+            "123456": {
+                cliente: "***** A. *****",
+                cnpj: "12.345.678/0001-90",
+                data: "01/04/2026",
+                hora: "17:07",
+                items: [
+                    {
+                        ean: "220203",
+                        nome: "Multifuncional Tanque de tinta Ecotank L3250 Epson",
+                        codigo: "220203",
+                        qtdSolicitada: 1,
+                        qtdSeparada: 0,
+                        imagem: "https://img.kalunga.com.br/fotosdeprodutos/220203d.jpg"
+                    },
+                    {
+                        ean: "476102",
+                        nome: "Papel sulfite A4 75g 210mmx297mm Chamex",
+                        codigo: "476102",
+                        qtdSolicitada: 5,
+                        qtdSeparada: 0,
+                        imagem: "https://img.kalunga.com.br/fotosdeprodutos/476102d.jpg"
+                    }
+                ]
+            },
+            "987654": {
+                cliente: "***** B. *****",
+                cnpj: "98.765.432/0001-01",
+                data: "02/04/2026",
+                hora: "09:30",
+                items: [
+                    {
+                        ean: "158057",
+                        nome: "Calculadora financeira 12C Gold F2230A HP",
+                        codigo: "158057",
+                        qtdSolicitada: 1,
+                        qtdSeparada: 0,
+                        imagem: "https://img.kalunga.com.br/fotosdeprodutos/158057d.jpg"
+                    },
+                    {
+                        ean: "312700",
+                        nome: "Fita p/rotulador Brother 12mmx8m branca m231 Brother",
+                        codigo: "312700",
+                        qtdSolicitada: 6,
+                        qtdSeparada: 0,
+                        imagem: "https://img.kalunga.com.br/fotosdeprodutos/312700d.jpg"
+                    },
+                    {
+                        ean: "050031",
+                        nome: "Bobina térmica p/c. crédito/relógio ponto 57mmx22m Spiral",
+                        codigo: "050031",
+                        qtdSolicitada: 10,
+                        qtdSeparada: 0,
+                        imagem: "https://img.kalunga.com.br/fotosdeprodutos/050031d.jpg"
+                    }
+                ]
+            }
+        };
+
+        let orderStatus = {};
+        let currentOrderId = null;
+        let currentScannedEan = null;
+        let scanTargetEan = null; // Para escaneamento por produto
+
+        for (let id in orders) orderStatus[id] = "pending";
+
+        const homeContainer = document.getElementById('order-list-container');
+        const searchInput = document.getElementById('search-input');
+        const pickingTitle = document.getElementById('picking-title');
+        const pickingSub = document.getElementById('picking-sub');
+        const productStatusList = document.getElementById('product-status-list');
+        const manualCodeInput = document.getElementById('manual-code');
+
+        const modal = document.getElementById('qty-modal');
+        const modalProductName = document.getElementById('modal-product-name');
+        const modalProductEan = document.getElementById('modal-product-ean');
+        const modalQtySpan = document.getElementById('modal-qty-value');
+        let modalQty = 1;
+
+        function show(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+
+        function goHome() {
+            if (cameraActive) stopCamera();
+            closeModal();
+            renderHome();
+            show('view-home');
+        }
+
+        function renderHome() {
+            const filter = searchInput.value.trim().toLowerCase();
+            const orderIds = Object.keys(orders);
+            let filtered = orderIds.filter(id =>
+                id.includes(filter) ||
+                orders[id].cliente.toLowerCase().includes(filter) ||
+                orders[id].cnpj.includes(filter)
+            );
+
+            if (filtered.length === 0) {
+                homeContainer.innerHTML = '<div class="empty-state">Nenhum pedido encontrado</div>';
+                return;
+            }
+
+            homeContainer.innerHTML = filtered.map(id => {
+                const order = orders[id];
+                const status = orderStatus[id];
+                const isDone = status === 'done';
+                return `
+                    <div class="order-card">
+                        <div class="order-header">
+                            <span class="order-id">${id}</span>
+                            <span class="badge-pickup">Pickup In Store</span>
+                        </div>
+                        <div class="customer-info">
+                            <div class="customer-name">${order.cliente}</div>
+                            <div class="customer-doc">${order.cnpj}</div>
+                        </div>
+                        <div class="order-footer">
+                            <div class="datetime">${order.data} ${order.hora}</div>
+                            ${!isDone ? `<button class="btn-start" onclick="startPicking('${id}')">Iniciar Separação</button>` : `<button class="btn-start disabled" disabled>Concluído</button>`}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function startPicking(orderId) {
+            currentOrderId = orderId;
+            if (orderStatus[orderId] !== 'active') orderStatus[orderId] = 'active';
+            renderPickingScreen();
+            show('view-picking');
+        }
+
+        function renderPickingScreen() {
+            const order = orders[currentOrderId];
+            pickingTitle.textContent = `Iniciar Separação - #${currentOrderId}`;
+            const total = order.items.reduce((s, i) => s + i.qtdSolicitada, 0);
+            const separado = order.items.reduce((s, i) => s + i.qtdSeparada, 0);
+            pickingSub.textContent = `${separado} de ${total} itens separados`;
+
+            productStatusList.innerHTML = order.items.map(item => {
+                const isComplete = item.qtdSeparada >= item.qtdSolicitada;
+                const statusText = isComplete ? '✓ Completo' : `${item.qtdSeparada} / ${item.qtdSolicitada}`;
+                return `
+                    <div class="product-status-card" data-ean="${item.ean}">
+                        <img class="product-image" src="${item.imagem}" alt="${item.nome}" onerror="this.src='https://placehold.co/60x60?text=Sem+Imagem'">
+                        <div class="product-details">
+                            <div class="product-name-status">${item.nome}</div>
+                            <div class="product-codes-status">Código: ${item.codigo}</div>
+                            <div class="product-qty-status">
+                                <span class="qty-requested-status">Solicitado: ${item.qtdSolicitada} un</span>
+                                <span class="qty-separated-status ${isComplete ? 'complete-badge' : ''}">${statusText}</span>
+                            </div>
+                        </div>
+                        <button class="scan-item-btn" onclick="scanProductItem('${item.ean}')">📱</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Função para escanear diretamente um produto específico
+        function scanProductItem(ean) {
+            scanTargetEan = ean;
+            startCamera();
+        }
+
+        function processCode(code) {
+            // Se estamos em modo de escaneamento por produto
+            if (scanTargetEan) {
+                if (code === scanTargetEan) {
+                    const order = orders[currentOrderId];
+                    const item = order.items.find(i => i.ean === scanTargetEan);
+                    if (item) {
+                        if (item.qtdSeparada >= item.qtdSolicitada) {
+                            alert(`Produto ${item.nome} já está totalmente separado.`);
+                        } else {
+                            // Abre modal de quantidade para este produto
+                            currentScannedEan = scanTargetEan;
+                            modalProductName.textContent = item.nome;
+                            modalProductEan.textContent = `Código: ${item.codigo}`;
+                            modalQty = 1;
+                            modalQtySpan.textContent = modalQty;
+                            modal.classList.add('active');
+                        }
+                    }
+                } else {
+                    alert(`Código escaneado (${code}) não corresponde ao produto selecionado.`);
+                }
+                scanTargetEan = null;
+                return;
+            }
+
+            // Modo normal (escaneamento global) - já que removemos o botão global, este trecho pode ser mantido para uso futuro se necessário
+            if (!currentOrderId) {
+                alert("Nenhum pedido selecionado.");
+                return;
+            }
+            const order = orders[currentOrderId];
+            const item = order.items.find(i => i.ean === code);
+            if (!item) {
+                alert(`Código ${code} não encontrado neste pedido.`);
+                return;
+            }
+            if (item.qtdSeparada >= item.qtdSolicitada) {
+                alert(`Produto ${item.nome} já está totalmente separado.`);
+                return;
+            }
+            currentScannedEan = code;
+            modalProductName.textContent = item.nome;
+            modalProductEan.textContent = `Código: ${item.codigo}`;
+            modalQty = 1;
+            modalQtySpan.textContent = modalQty;
+            modal.classList.add('active');
+        }
+
+        function handleManualCode() {
+            const code = manualCodeInput.value.trim();
+            if (!code) return;
+            manualCodeInput.value = '';
+            processCode(code);
+        }
+
+        function changeModalQty(delta) {
+            let newQty = modalQty + delta;
+            if (newQty < 1) newQty = 1;
+            const order = orders[currentOrderId];
+            const item = order.items.find(i => i.ean === currentScannedEan);
+            if (item) {
+                const maxPossible = item.qtdSolicitada - item.qtdSeparada;
+                if (newQty > maxPossible) newQty = maxPossible;
+            }
+            modalQty = newQty;
+            modalQtySpan.textContent = modalQty;
+        }
+
+        function confirmQuantity() {
+            if (!currentOrderId || !currentScannedEan) return;
+            const order = orders[currentOrderId];
+            const item = order.items.find(i => i.ean === currentScannedEan);
+            if (!item) {
+                closeModal();
+                return;
+            }
+            const remaining = item.qtdSolicitada - item.qtdSeparada;
+            if (modalQty > remaining) {
+                alert(`Quantidade excede o restante. Restam ${remaining} unidade(s).`);
+                return;
+            }
+            item.qtdSeparada += modalQty;
+            closeModal();
+            renderPickingScreen();
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+            currentScannedEan = null;
+        }
+
+        function finishOrder() {
+            const order = orders[currentOrderId];
+            const allSeparated = order.items.every(i => i.qtdSeparada === i.qtdSolicitada);
+            if (!allSeparated) {
+                if (confirm("Ainda há itens com quantidade incompleta. Deseja finalizar o pedido mesmo assim?")) {
+                    orderStatus[currentOrderId] = 'done';
+                    goHome();
+                }
+            } else {
+                orderStatus[currentOrderId] = 'done';
+                goHome();
+            }
+        }
+
+        let html5QrCode = null;
+        let cameraActive = false;
+
+        function startCamera() {
+            if (cameraActive) return;
+            const container = document.getElementById('camera-container');
+            container.classList.add('active');
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => { html5QrCode = null; }).catch(() => { });
+            }
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    stopCamera();
+                    processCode(decodedText);
+                },
+                (errorMessage) => { }
+            ).catch(err => {
+                console.error(err);
+                alert("Não foi possível acessar a câmera.");
+                stopCamera();
+            });
+            cameraActive = true;
+        }
+
+        function stopCamera() {
+            if (html5QrCode && cameraActive) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('camera-container').classList.remove('active');
+                    cameraActive = false;
+                    html5QrCode = null;
+                }).catch(() => {
+                    document.getElementById('camera-container').classList.remove('active');
+                    cameraActive = false;
+                    html5QrCode = null;
+                });
+            } else {
+                document.getElementById('camera-container').classList.remove('active');
+                cameraActive = false;
+            }
+        }
+
+        manualCodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleManualCode();
+        });
+
+        renderHome();
+    </script>
+</body>
+
+</html>
