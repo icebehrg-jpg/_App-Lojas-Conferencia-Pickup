@@ -349,94 +349,6 @@
             cursor: pointer;
         }
 
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            width: 85%;
-            max-width: 320px;
-            border-radius: 28px;
-            padding: 24px;
-            text-align: center;
-        }
-
-        .modal-content h3 {
-            font-size: 18px;
-            margin-bottom: 8px;
-        }
-
-        .modal-content p {
-            font-size: 14px;
-            color: #5b6e8c;
-            margin-bottom: 20px;
-        }
-
-        .qty-modal-control {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            margin: 20px 0;
-        }
-
-        .qty-modal-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 44px;
-            background: #eef2ff;
-            border: none;
-            font-size: 24px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .qty-modal-value {
-            font-size: 28px;
-            font-weight: 700;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .modal-buttons button {
-            flex: 1;
-            padding: 12px;
-            border-radius: 40px;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-        }
-
-        .modal-confirm {
-            background: #2563eb;
-            color: white;
-        }
-
-        .modal-cancel {
-            background: #f1f4f9;
-            color: #1e293b;
-        }
-
         .camera-container {
             position: fixed;
             top: 0;
@@ -474,6 +386,20 @@
             text-align: center;
             padding: 40px 20px;
             color: #94a3b8;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 14px;
+            z-index: 1002;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -514,23 +440,6 @@
         <button class="btn-finish" onclick="finishOrder()">Finalizar Pedido</button>
     </div>
 
-    <!-- Modal de quantidade -->
-    <div id="qty-modal" class="modal">
-        <div class="modal-content">
-            <h3 id="modal-product-name"></h3>
-            <p id="modal-product-ean"></p>
-            <div class="qty-modal-control">
-                <button class="qty-modal-btn" onclick="changeModalQty(-1)">−</button>
-                <span id="modal-qty-value" class="qty-modal-value">1</span>
-                <button class="qty-modal-btn" onclick="changeModalQty(1)">+</button>
-            </div>
-            <div class="modal-buttons">
-                <button class="modal-cancel" onclick="closeModal()">Cancelar</button>
-                <button class="modal-confirm" onclick="confirmQuantity()">Confirmar</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Modal da câmera -->
     <div id="camera-container" class="camera-container">
         <div id="reader" style="width: 100%; max-width: 500px;"></div>
@@ -547,8 +456,8 @@
                 hora: "17:07",
                 items: [
                     {
-                        ean: "010343958111",      // EAN real
-                        codigo: "220203",          // SKU interno
+                        ean: "010343958111",
+                        codigo: "220203",
                         nome: "Multifuncional Tanque de tinta Ecotank L3250 Epson",
                         qtdSolicitada: 1,
                         qtdSeparada: 0,
@@ -600,8 +509,6 @@
 
         let orderStatus = {};
         let currentOrderId = null;
-        let currentScannedEan = null;
-        let scanTargetEan = null; // Para escaneamento por produto
 
         for (let id in orders) orderStatus[id] = "pending";
 
@@ -612,13 +519,17 @@
         const productStatusList = document.getElementById('product-status-list');
         const manualCodeInput = document.getElementById('manual-code');
 
-        const modal = document.getElementById('qty-modal');
-        const modalProductName = document.getElementById('modal-product-name');
-        const modalProductEan = document.getElementById('modal-product-ean');
-        const modalQtySpan = document.getElementById('modal-qty-value');
-        let modalQty = 1;
+        function showToast(message, isError = false) {
+            let toast = document.querySelector('.toast');
+            if (toast) toast.remove();
+            toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.background = isError ? '#dc2626' : '#10b981';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
 
-        // Função auxiliar para encontrar produto por EAN ou SKU
         function findProductByCode(orderItems, code) {
             return orderItems.find(item => item.ean === code || item.codigo === code);
         }
@@ -630,7 +541,6 @@
 
         function goHome() {
             if (cameraActive) stopCamera();
-            closeModal();
             renderHome();
             show('view-home');
         }
@@ -700,63 +610,64 @@
                                 <span class="qty-separated-status ${isComplete ? 'complete-badge' : ''}">${statusText}</span>
                             </div>
                         </div>
-                        <button class="scan-item-btn" onclick="scanProductItem('${item.ean}')">📱</button>
+                        <button class="scan-item-btn" onclick="scanSpecificProduct('${item.ean}')">📱</button>
                     </div>
                 `;
             }).join('');
         }
 
-        function scanProductItem(ean) {
-            scanTargetEan = ean;
+        // Função chamada ao clicar no ícone de escaneamento de um produto específico
+        function scanSpecificProduct(ean) {
+            // Abre a câmera e, ao ler, verifica se o código corresponde ao EAN do produto
+            startCameraWithTarget(ean);
+        }
+
+        let cameraTargetEan = null;
+
+        function startCameraWithTarget(targetEan) {
+            cameraTargetEan = targetEan;
             startCamera();
         }
 
+        // Processa o código escaneado (vindo da câmera ou do campo manual)
         function processCode(code) {
-            // Se veio de um escaneamento por produto específico
-            if (scanTargetEan) {
-                if (code === scanTargetEan) {
-                    const order = orders[currentOrderId];
-                    const item = order.items.find(i => i.ean === scanTargetEan);
-                    if (item) {
-                        if (item.qtdSeparada >= item.qtdSolicitada) {
-                            alert(`Produto ${item.nome} já está totalmente separado.`);
-                        } else {
-                            currentScannedEan = scanTargetEan;
-                            modalProductName.textContent = item.nome;
-                            modalProductEan.textContent = `SKU: ${item.codigo} | EAN: ${item.ean}`;
-                            modalQty = 1;
-                            modalQtySpan.textContent = modalQty;
-                            modal.classList.add('active');
-                        }
-                    }
-                } else {
-                    alert(`Produto (${code}) não consta no pedido.`);
-                }
-                scanTargetEan = null;
+            if (!currentOrderId) {
+                showToast("Nenhum pedido selecionado.", true);
                 return;
             }
 
-            // Escaneamento normal (campo manual ou câmera sem target específico)
-            if (!currentOrderId) {
-                alert("Nenhum pedido selecionado.");
-                return;
-            }
             const order = orders[currentOrderId];
-            const item = findProductByCode(order.items, code);
+            let item = null;
+
+            // Se veio de um escaneamento específico (botão do produto)
+            if (cameraTargetEan) {
+                if (code === cameraTargetEan) {
+                    item = order.items.find(i => i.ean === cameraTargetEan);
+                } else {
+                    showToast(`Código ${code} não corresponde ao produto selecionado.`, true);
+                    cameraTargetEan = null;
+                    return;
+                }
+                cameraTargetEan = null;
+            } else {
+                // Escaneamento livre: busca por EAN ou SKU
+                item = findProductByCode(order.items, code);
+            }
+
             if (!item) {
-                alert(`Código ${code} não encontrado neste pedido.`);
+                showToast(`Código ${code} não encontrado neste pedido.`, true);
                 return;
             }
+
             if (item.qtdSeparada >= item.qtdSolicitada) {
-                alert(`Produto ${item.nome} já está totalmente separado.`);
+                showToast(`Produto ${item.nome} já está totalmente separado.`, true);
                 return;
             }
-            currentScannedEan = item.ean;
-            modalProductName.textContent = item.nome;
-            modalProductEan.textContent = `SKU: ${item.codigo} | EAN: ${item.ean}`;
-            modalQty = 1;
-            modalQtySpan.textContent = modalQty;
-            modal.classList.add('active');
+
+            // Adiciona 1 unidade
+            item.qtdSeparada++;
+            renderPickingScreen();
+            showToast(`✓ ${item.nome} - ${item.qtdSeparada}/${item.qtdSolicitada}`, false);
         }
 
         function handleManualCode() {
@@ -764,42 +675,6 @@
             if (!code) return;
             manualCodeInput.value = '';
             processCode(code);
-        }
-
-        function changeModalQty(delta) {
-            let newQty = modalQty + delta;
-            if (newQty < 1) newQty = 1;
-            const order = orders[currentOrderId];
-            const item = order.items.find(i => i.ean === currentScannedEan);
-            if (item) {
-                const maxPossible = item.qtdSolicitada - item.qtdSeparada;
-                if (newQty > maxPossible) newQty = maxPossible;
-            }
-            modalQty = newQty;
-            modalQtySpan.textContent = modalQty;
-        }
-
-        function confirmQuantity() {
-            if (!currentOrderId || !currentScannedEan) return;
-            const order = orders[currentOrderId];
-            const item = order.items.find(i => i.ean === currentScannedEan);
-            if (!item) {
-                closeModal();
-                return;
-            }
-            const remaining = item.qtdSolicitada - item.qtdSeparada;
-            if (modalQty > remaining) {
-                alert(`Quantidade excede o restante. Restam ${remaining} unidade(s).`);
-                return;
-            }
-            item.qtdSeparada += modalQty;
-            closeModal();
-            renderPickingScreen();
-        }
-
-        function closeModal() {
-            modal.classList.remove('active');
-            currentScannedEan = null;
         }
 
         function finishOrder() {
@@ -816,6 +691,7 @@
             }
         }
 
+        // --- Leitura de código de barras (câmera) ---
         let html5QrCode = null;
         let cameraActive = false;
 
