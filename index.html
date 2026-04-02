@@ -200,7 +200,6 @@
             margin-top: 4px;
         }
 
-        /* Área de escaneamento manual */
         .scan-area {
             background: white;
             margin: 16px;
@@ -503,8 +502,8 @@
 
         <div class="scan-area">
             <div class="manual-entry">
-                <input type="text" id="manual-code" class="manual-input" placeholder="Digite o código do produto"
-                    inputmode="numeric">
+                <input type="text" id="manual-code" class="manual-input"
+                    placeholder="Digite o código do produto (SKU ou EAN)" inputmode="numeric">
                 <button class="manual-btn" onclick="handleManualCode()">Buscar</button>
             </div>
         </div>
@@ -539,7 +538,7 @@
     </div>
 
     <script>
-        // ---------- DADOS MOCK COM OS PEDIDOS HIPOTÉTICOS ----------
+        // ---------- DADOS COM OS EANS CORRETOS ----------
         let orders = {
             "123456": {
                 cliente: "***** A. *****",
@@ -548,17 +547,17 @@
                 hora: "17:07",
                 items: [
                     {
-                        ean: "220203",
+                        ean: "010343958111",      // EAN real
+                        codigo: "220203",          // SKU interno
                         nome: "Multifuncional Tanque de tinta Ecotank L3250 Epson",
-                        codigo: "220203",
                         qtdSolicitada: 1,
                         qtdSeparada: 0,
                         imagem: "https://img.kalunga.com.br/fotosdeprodutos/220203d.jpg"
                     },
                     {
-                        ean: "476102",
-                        nome: "Papel sulfite A4 75g 210mmx297mm Chamex",
+                        ean: "7891173023001",
                         codigo: "476102",
+                        nome: "Papel sulfite A4 75g 210mmx297mm Chamex",
                         qtdSolicitada: 5,
                         qtdSeparada: 0,
                         imagem: "https://img.kalunga.com.br/fotosdeprodutos/476102d.jpg"
@@ -572,25 +571,25 @@
                 hora: "09:30",
                 items: [
                     {
-                        ean: "158057",
-                        nome: "Calculadora financeira 12C Gold F2230A HP",
+                        ean: "088698000120",
                         codigo: "158057",
+                        nome: "Calculadora financeira 12C Gold F2230A HP",
                         qtdSolicitada: 1,
                         qtdSeparada: 0,
                         imagem: "https://img.kalunga.com.br/fotosdeprodutos/158057d.jpg"
                     },
                     {
-                        ean: "312700",
-                        nome: "Fita p/rotulador Brother 12mmx8m branca m231 Brother",
+                        ean: "012502053736",
                         codigo: "312700",
+                        nome: "Fita p/rotulador Brother 12mmx8m branca m231 Brother",
                         qtdSolicitada: 6,
                         qtdSeparada: 0,
                         imagem: "https://img.kalunga.com.br/fotosdeprodutos/312700d.jpg"
                     },
                     {
-                        ean: "050031",
-                        nome: "Bobina térmica p/c. crédito/relógio ponto 57mmx22m Spiral",
+                        ean: "7896886465827",
                         codigo: "050031",
+                        nome: "Bobina térmica p/c. crédito/relógio ponto 57mmx22m Spiral",
                         qtdSolicitada: 10,
                         qtdSeparada: 0,
                         imagem: "https://img.kalunga.com.br/fotosdeprodutos/050031d.jpg"
@@ -618,6 +617,11 @@
         const modalProductEan = document.getElementById('modal-product-ean');
         const modalQtySpan = document.getElementById('modal-qty-value');
         let modalQty = 1;
+
+        // Função auxiliar para encontrar produto por EAN ou SKU
+        function findProductByCode(orderItems, code) {
+            return orderItems.find(item => item.ean === code || item.codigo === code);
+        }
 
         function show(viewId) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -686,11 +690,11 @@
                 const isComplete = item.qtdSeparada >= item.qtdSolicitada;
                 const statusText = isComplete ? '✓ Completo' : `${item.qtdSeparada} / ${item.qtdSolicitada}`;
                 return `
-                    <div class="product-status-card" data-ean="${item.ean}">
+                    <div class="product-status-card" data-ean="${item.ean}" data-codigo="${item.codigo}">
                         <img class="product-image" src="${item.imagem}" alt="${item.nome}" onerror="this.src='https://placehold.co/60x60?text=Sem+Imagem'">
                         <div class="product-details">
                             <div class="product-name-status">${item.nome}</div>
-                            <div class="product-codes-status">Código: ${item.codigo}</div>
+                            <div class="product-codes-status">SKU: ${item.codigo} | EAN: ${item.ean}</div>
                             <div class="product-qty-status">
                                 <span class="qty-requested-status">Solicitado: ${item.qtdSolicitada} un</span>
                                 <span class="qty-separated-status ${isComplete ? 'complete-badge' : ''}">${statusText}</span>
@@ -702,14 +706,13 @@
             }).join('');
         }
 
-        // Função para escanear diretamente um produto específico
         function scanProductItem(ean) {
             scanTargetEan = ean;
             startCamera();
         }
 
         function processCode(code) {
-            // Se estamos em modo de escaneamento por produto
+            // Se veio de um escaneamento por produto específico
             if (scanTargetEan) {
                 if (code === scanTargetEan) {
                     const order = orders[currentOrderId];
@@ -718,29 +721,28 @@
                         if (item.qtdSeparada >= item.qtdSolicitada) {
                             alert(`Produto ${item.nome} já está totalmente separado.`);
                         } else {
-                            // Abre modal de quantidade para este produto
                             currentScannedEan = scanTargetEan;
                             modalProductName.textContent = item.nome;
-                            modalProductEan.textContent = `Código: ${item.codigo}`;
+                            modalProductEan.textContent = `SKU: ${item.codigo} | EAN: ${item.ean}`;
                             modalQty = 1;
                             modalQtySpan.textContent = modalQty;
                             modal.classList.add('active');
                         }
                     }
                 } else {
-                    alert(`Código escaneado (${code}) não corresponde ao produto selecionado.`);
+                    alert(`Produto (${code}) não consta no pedido.`);
                 }
                 scanTargetEan = null;
                 return;
             }
 
-            // Modo normal (escaneamento global) - já que removemos o botão global, este trecho pode ser mantido para uso futuro se necessário
+            // Escaneamento normal (campo manual ou câmera sem target específico)
             if (!currentOrderId) {
                 alert("Nenhum pedido selecionado.");
                 return;
             }
             const order = orders[currentOrderId];
-            const item = order.items.find(i => i.ean === code);
+            const item = findProductByCode(order.items, code);
             if (!item) {
                 alert(`Código ${code} não encontrado neste pedido.`);
                 return;
@@ -749,9 +751,9 @@
                 alert(`Produto ${item.nome} já está totalmente separado.`);
                 return;
             }
-            currentScannedEan = code;
+            currentScannedEan = item.ean;
             modalProductName.textContent = item.nome;
-            modalProductEan.textContent = `Código: ${item.codigo}`;
+            modalProductEan.textContent = `SKU: ${item.codigo} | EAN: ${item.ean}`;
             modalQty = 1;
             modalQtySpan.textContent = modalQty;
             modal.classList.add('active');
